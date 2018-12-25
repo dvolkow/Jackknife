@@ -3,10 +3,10 @@ import random
 import math
 
 OUTP_F = "dataset.txt"
-N = 300
-SERIES_COUNT = 1000
+N = 100
+SERIES_COUNT = 10000
 EDGE_COUNT = 30 
-FAST_SAMPLE = [0, 1, 5, 10, 15, 20, 25]
+FAST_SAMPLE = [0, 1, 3, 5, 7, 10, 12, 15, 17, 20, 22, 25]
 left_b = -1
 right_b = 1
 default_sigma = 0.1
@@ -14,6 +14,7 @@ default_sigma = 0.1
 p_opt_ar = [[0 for j in range(SERIES_COUNT)] for i in range(EDGE_COUNT + 1)]
 p_jkf_ar = [[0 for j in range(SERIES_COUNT)] for i in range(EDGE_COUNT + 1)]
 p_sig_ar = [[0 for j in range(SERIES_COUNT)] for i in range(EDGE_COUNT + 1)]
+p_jsg_ar = [[0 for j in range(SERIES_COUNT)] for i in range(EDGE_COUNT + 1)]
 p_del_ar = [[0 for j in range(SERIES_COUNT)] for i in range(EDGE_COUNT + 1)]
 
 def generate_dataset():
@@ -47,13 +48,22 @@ def jackknife(dataset):
     for i in range(size):
         par = lse([dataset[j] for j in range(size) if j != i])
         tmp += (par - mean_par) ** 2
-    sigma = math.sqrt((size - 1.) / size * tmp)
+    sigma = math.sqrt(tmp * (size - 1.) / size)
 
     return (mean_par, sigma)
 
 def par_corr(par_opt, par_j, n):
     par_c = n * par_opt - (n - 1) * par_j
     return (par_c, par_opt - par_c) 
+
+def sigma_lse(dataset, par_opt):
+    size = len(dataset)
+    sigma = 0
+    for i in range(size):
+        sigma += (dataset[i][0] * par_opt - dataset[i][1]) ** 2
+    return math.sqrt(sigma / (size - 1.))
+
+
 
 def shifted_y(dataset_pair, i, j, mul):
     if i != j:
@@ -66,15 +76,19 @@ def shifted_dataset(dataset, n, mul):
 def iterate(dataset):
     print_dataset(dataset)
     p_opt = lse(dataset)
+    ls_sig = sigma_lse(dataset, p_opt)
     jk_res = jackknife(dataset)
+    jk_sig = sigma_lse(dataset, jk_res[0])
     delta_par = par_corr(p_opt, jk_res[0], N)[1]
-    return (p_opt, jk_res[0], jk_res[1], delta_par)
+    return (p_opt, jk_res[0], ls_sig, delta_par, jk_sig)
 
 def set_params(i, j, iterate_tuple):
     p_opt_ar[j][i] = iterate_tuple[0]
     p_jkf_ar[j][i] = iterate_tuple[1]
-#    p_sig_ar[j][i] = iterate_tuple[2]
+    p_sig_ar[j][i] = iterate_tuple[2]
     p_del_ar[j][i] = iterate_tuple[3]
+    p_jsg_ar[j][i] = iterate_tuple[4]
+#    print(p_sig_ar[j][i], p_jsg_ar[j][i])
 
 def stage(i, mul):
     dataset = generate_dataset()
@@ -86,27 +100,32 @@ def stage(i, mul):
         set_params(i, j + 1, iterate(new_dataset))
 
     if i % (SERIES_COUNT / 100) == 0:
-        print("\r{0:.3f}% complete...".format(float(i) / SERIES_COUNT * 100), end = '')
+        print("\r{0:.3f}% complete...\t\t".format(float(i) / SERIES_COUNT * 100), end = '')
 
 
 def get_result():
-    print("#---|---  LSE ---|---- JK ----|-- DELTA --")
+    print("#---|---  LSE ---|---- JK ----|-- DELTA ---|-- SD_LSE --|--- SD_J ---")
     lse_value = sum([p_opt_ar[0][i] for i in range(SERIES_COUNT)]) / SERIES_COUNT
     jkf_value = sum([p_jkf_ar[0][i] for i in range(SERIES_COUNT)]) / SERIES_COUNT
     del_value = sum([p_del_ar[0][i] for i in range(SERIES_COUNT)]) / SERIES_COUNT
-    print("{0:3} | {1:.8f} | {2:.8f} | {3:.8f}".format(0, lse_value, jkf_value, del_value))
+    sig_value = sum([p_sig_ar[0][i] for i in range(SERIES_COUNT)]) / SERIES_COUNT
+    jsg_value = sum([p_jsg_ar[0][i] for i in range(SERIES_COUNT)]) / SERIES_COUNT
+    print("{0:3} | {1:.8f} | {2:.8f} | {3:.8f} | {4:.8f} | {5:.8f}".format(0, lse_value, jkf_value, math.fabs(del_value), jsg_value, sig_value))
+    print("----|------------|------------|------------|------------|------------")
     for j in FAST_SAMPLE:
         lse_value = sum([p_opt_ar[j + 1][i] for i in range(SERIES_COUNT)]) / SERIES_COUNT
         jkf_value = sum([p_jkf_ar[j + 1][i] for i in range(SERIES_COUNT)]) / SERIES_COUNT
         del_value = sum([p_del_ar[j + 1][i] for i in range(SERIES_COUNT)]) / SERIES_COUNT
-        print("{0:3} | {1:.8f} | {2:.8f} | {3:.8f}".format(j + 1, lse_value, jkf_value, del_value))
+        sig_value = sum([p_sig_ar[j + 1][i] for i in range(SERIES_COUNT)]) / SERIES_COUNT
+        jsg_value = sum([p_jsg_ar[j + 1][i] for i in range(SERIES_COUNT)]) / SERIES_COUNT
+        print("{0:3} | {1:.8f} | {2:.8f} | {3:.8f} | {4:.8f} | {5:.8f}".format(j + 1, lse_value, jkf_value, math.fabs(del_value), jsg_value, sig_value))
 
 
     
 
 if __name__ == '__main__':
     for i in range(SERIES_COUNT):
-        stage(i, 10)
+        stage(i, 3)
     print("Success")
     get_result()
 #    print("------------------------------------")
